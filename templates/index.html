@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MatchaQ AI Matcher</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="container">
+        <h1>🌿 MatchaQ AI Portfolio Matcher</h1>
+
+        <form method="POST" enctype="multipart/form-data">
+            
+            <div class="box">
+                <label>Upload Job Description</label>
+                <input type="file" name="jd" required>
+            </div>
+
+            <div class="box">
+                <label>Upload Portfolio (Multiple)</label>
+                <input type="file" name="portfolio" multiple required>
+            </div>
+
+            <button type="submit">✨ Analyze</button>
+        </form>
+
+        {% if table_data %}
+        <h2>📊 Results Dashboard</h2>
+
+        <table>
+            <tr>
+                <th>Rank</th>
+                <th>Portfolio</th>
+                <th>Overall</th>
+                <th>Semantic</th>
+                <th>Keyword</th>
+                <th>Coverage</th>
+                <th>HSK</th>
+                <th>Recommendation</th>
+            </tr>
+
+            {% for row in table_data %}
+            <tr>
+                <td>{{ loop.index }}</td>
+                <td>{{ row.get("Portfolio", "-") }}</td>
+                <td class="score">{{ row.get("Overall Score (%)", "-") }}</td>
+                <td>{{ row.get("Semantic Similarity (%)", "-") }}</td>
+                <td>{{ row.get("Keyword Match (%)", "-") }}</td>
+                <td>{{ row.get("Skill Coverage (%)", "-") }}</td>
+                <td>{{ row.get("HSK Level", "-") }}</td>
+                <td>{{ row.get("Recommendation", "-") }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+</body>
+</html>
