@@ -1,35 +1,61 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>MatchaQ AI Matcher</title>
+    <title>MatchaQ AI</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
-    <div class="container">
-        <h1>🌿 MatchaQ AI Portfolio Matcher</h1>
 
-        <form method="POST" enctype="multipart/form-data">
-            
-            <div class="box">
-                <label>Upload Job Description</label>
-                <input type="file" name="jd" required>
-            </div>
+<div class="container">
 
-            <div class="box">
-                <label>Upload Portfolio (Multiple)</label>
-                <input type="file" name="portfolio" multiple required>
-            </div>
+    <h1>🌿 MatchaQ AI Portfolio Matcher</h1>
 
-            <button type="submit">✨ Analyze</button>
-        </form>
+    <!-- Upload -->
+    <form action="/analyze" method="post" enctype="multipart/form-data" class="card upload-card">
 
-        {% if table_data %}
-        <h2>📊 Results Dashboard</h2>
+        <div class="form-group">
+            <label>Upload Job Description</label>
+            <input type="file" name="jd" required>
+        </div>
+
+        <div class="form-group">
+            <label>Upload Portfolio (Multiple)</label>
+            <input type="file" name="portfolios" multiple required>
+        </div>
+
+        <button type="submit">✨ Analyze</button>
+
+    </form>
+
+    {% if results %}
+
+    <!-- KPI -->
+    <div class="kpi-container">
+
+        <div class="kpi">
+            <span>Candidates</span>
+            <h2>{{ results|length }}</h2>
+        </div>
+
+        <div class="kpi">
+            <span>Top Score</span>
+            <h2>{{ results[0]['Overall Score (%)'] }}</h2>
+        </div>
+
+        <div class="kpi">
+            <span>Top Candidate</span>
+            <h3>{{ results[0]['Portfolio'] }}</h3>
+        </div>
+
+    </div>
+
+    <!-- TABLE -->
+    <div class="card">
+        <h2>📊 Ranking Summary</h2>
 
         <table>
             <tr>
-                <th>Rank</th>
                 <th>Portfolio</th>
                 <th>Overall</th>
                 <th>Semantic</th>
@@ -39,20 +65,45 @@
                 <th>Recommendation</th>
             </tr>
 
-            {% for row in table_data %}
+            {% for r in results %}
             <tr>
-                <td>{{ loop.index }}</td>
-                <td>{{ row.get("Portfolio", "-") }}</td>
-                <td class="score">{{ row.get("Overall Score (%)", "-") }}</td>
-                <td>{{ row.get("Semantic Similarity (%)", "-") }}</td>
-                <td>{{ row.get("Keyword Match (%)", "-") }}</td>
-                <td>{{ row.get("Skill Coverage (%)", "-") }}</td>
-                <td>{{ row.get("HSK Level", "-") }}</td>
-                <td>{{ row.get("Recommendation", "-") }}</td>
+                <td>{{ r['Portfolio'] }}</td>
+                <td class="score">{{ r['Overall Score (%)'] }}</td>
+                <td>{{ r['Semantic Similarity (%)'] }}</td>
+                <td>{{ r['Keyword Match (%)'] }}</td>
+                <td>{{ r['Skill Coverage (%)'] }}</td>
+                <td>{{ r['HSK Level'] }}</td>
+                <td>
+                    <span class="badge">{{ r['Recommendation'] }}</span>
+                </td>
             </tr>
             {% endfor %}
         </table>
-        {% endif %}
     </div>
+
+    <!-- DETAILS -->
+    <h2>🧠 Skill Matching Details</h2>
+
+    {% for r in results %}
+    <div class="card detail-card">
+
+        <h3>{{ r['Portfolio'] }}</h3>
+
+        <p><b>Tech:</b> <span class="tag">{{ r['Matched JD Technical Skills'] }}</span></p>
+        <p><b>Language:</b> <span class="tag">{{ r['Matched JD Language Skills'] }}</span></p>
+        <p><b>Soft:</b> <span class="tag">{{ r['Matched JD Soft Skills'] }}</span></p>
+
+        <div class="evidence">
+            <b>Evidence:</b>
+            <p>{{ r['Soft Skill Evidence Sentences'] }}</p>
+        </div>
+
+    </div>
+    {% endfor %}
+
+    {% endif %}
+
+</div>
+
 </body>
 </html>
