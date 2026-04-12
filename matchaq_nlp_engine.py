@@ -6,7 +6,6 @@ from typing import Dict, Iterable, List, Optional, Sequence
 
 import fitz
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -525,6 +524,8 @@ def detect_hsk(text: str) -> int:
 @lru_cache(maxsize=1)
 def get_model():
     try:
+        from sentence_transformers import SentenceTransformer
+
         return SentenceTransformer(
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
             local_files_only=True,
