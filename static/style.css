@@ -1,53 +1,110 @@
 body {
-    margin: 0;
-    font-family: 'Segoe UI', sans-serif;
-    background: linear-gradient(135deg, #0f3d2e, #1f6f5c);
+    font-family: 'Segoe UI';
+    background: linear-gradient(135deg, #0f3d2e, #1b5e20);
     color: white;
+    margin: 0;
 }
 
 .container {
-    width: 70%;
+    width: 85%;
     margin: auto;
-    padding: 40px;
+    padding: 30px;
 }
 
+/* TITLE */
 h1 {
     text-align: center;
+    margin-bottom: 30px;
 }
 
-.box {
-    background: rgba(255,255,255,0.1);
-    padding: 15px;
-    margin: 15px 0;
-    border-radius: 10px;
+/* CARD */
+.card {
+    background: rgba(255,255,255,0.08);
+    padding: 20px;
+    border-radius: 15px;
+    margin-top: 20px;
+}
+
+/* UPLOAD */
+.upload-card {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
 }
 
 button {
     background: #2ecc71;
     border: none;
-    padding: 12px 25px;
+    padding: 12px 20px;
+    border-radius: 10px;
     color: white;
-    border-radius: 8px;
     cursor: pointer;
 }
 
-button:hover {
-    background: #27ae60;
+/* KPI */
+.kpi-container {
+    display: flex;
+    gap: 15px;
+    margin-top: 20px;
 }
 
+.kpi {
+    flex: 1;
+    background: rgba(255,255,255,0.1);
+    padding: 15px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+/* TABLE */
 table {
     width: 100%;
-    margin-top: 30px;
     border-collapse: collapse;
-    background: rgba(255,255,255,0.1);
+    margin-top: 10px;
 }
 
 th, td {
     padding: 12px;
-    text-align: center;
+    text-align: left;
+}
+
+tr {
+    border-bottom: 1px solid rgba(255,255,255,0.1);
 }
 
 .score {
     font-weight: bold;
     color: #2ecc71;
+}
+
+/* BADGE */
+.badge {
+    background: #27ae60;
+    padding: 5px 10px;
+    border-radius: 8px;
+}
+
+/* TAG */
+.tag {
+    background: #1abc9c;
+    padding: 4px 8px;
+    border-radius: 6px;
+}
+
+/* DETAIL */
+.detail-card {
+    margin-top: 15px;
+}
+
+.evidence {
+    margin-top: 10px;
+    background: rgba(0,0,0,0.2);
+    padding: 10px;
+    border-radius: 8px;
 }

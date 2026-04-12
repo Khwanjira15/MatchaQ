@@ -1,4 +1,27 @@
-venv/
+# macOS
+.DS_Store
+
+# Python cache
 __pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Local editor settings
+.vscode/
+
+# Runtime / uploads
 uploads/
-*.pdf
+*.log
+
+# Streamlit / misc temp
+.streamlit/
+.pytest_cache/
+
+# Local backup files
+*~
+*.swp
+* 2.py

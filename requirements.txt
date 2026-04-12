@@ -1,6 +1,9 @@
-flask
+fastapi
+uvicorn
+python-multipart
+jinja2
 pymupdf
 sentence-transformers
 scikit-learn
 pandas
-gunicorn
+numpy
