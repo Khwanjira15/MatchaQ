@@ -31,7 +31,7 @@ def save_file(upload_file: UploadFile):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse(request=request, name="index.html", context={"request": request})
 
 
 @app.get("/health")
@@ -71,11 +71,12 @@ async def analyze(request: Request, jd: UploadFile = File(...), portfolios: list
         })
 
     return templates.TemplateResponse(
-        "index.html",
-        {
+        request=request,
+        name="index.html",
+        context={
             "request": request,
             "results": data
-        }
+        },
     )
 
 
