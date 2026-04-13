@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Request
 from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -37,6 +38,11 @@ def home(request: Request):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/analyze")
+def analyze_redirect():
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/analyze", response_class=HTMLResponse)
