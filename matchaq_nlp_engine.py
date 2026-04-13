@@ -485,8 +485,8 @@ def categorize_skills(skills: Iterable[str]) -> tuple[List[str], List[str], List
     return tech, lang, soft
 
 
-def extract_soft_skill_evidence(text: str, matched_soft_skills: Sequence[str]) -> List[str]:
-    if not matched_soft_skills:
+def extract_match_evidence(text: str, matched_skills: Sequence[str]) -> List[str]:
+    if not matched_skills:
         return []
 
     sentences = split_sentences(text)
@@ -494,7 +494,7 @@ def extract_soft_skill_evidence(text: str, matched_soft_skills: Sequence[str]) -
     for sentence in sentences:
         normalized_sentence = normalize_text(sentence)
         token_set = set(normalized_sentence.split())
-        for skill in matched_soft_skills:
+        for skill in matched_skills:
             if any(_contains_term(normalized_sentence, token_set, alias) for alias in SKILL_ALIASES.get(skill, [])):
                 evidence.append(sentence.strip())
                 break
@@ -575,13 +575,9 @@ def _weighted_overlap_score(
 
 
 def recommendation_label(score: float) -> str:
-    if score >= 75:
-        return "เหมาะสมมาก"
-    if score >= 60:
+    if score >= 55:
         return "น่าสัมภาษณ์"
-    if score >= 45:
-        return "พิจารณาเพิ่มเติม"
-    return "ยังไม่ตรง"
+    return "ยังไม่ตรงตามเงื่อนไข"
 
 
 def evaluate_portfolios(
@@ -613,7 +609,8 @@ def evaluate_portfolios(
         )
 
         matched_tech, matched_lang, matched_soft = categorize_skills(matched_skills)
-        soft_evidence = extract_soft_skill_evidence(pf_text, [skill for skill in matched_soft if skill in jd_soft_skills])
+        evidence_skills = [skill for skill in matched_soft if skill in jd_soft_skills] or matched_skills
+        soft_evidence = extract_match_evidence(pf_text, evidence_skills)
 
         results.append(
             MatchResult(
