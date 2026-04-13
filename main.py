@@ -62,18 +62,16 @@ async def analyze(request: Request, jd: UploadFile = File(...), portfolios: list
     for row in df.fillna("-").to_dict(orient="records"):
         data.append({
             "Portfolio": row.get("Portfolio", "-"),
-            "overall": row.get("Overall Score (%)", "-"),
-            "semantic": row.get("Semantic Similarity (%)", "-"),
-            "keyword": row.get("Keyword Match (%)", "-"),
-            "coverage": row.get("Skill Coverage (%)", "-"),
-            "hsk": row.get("HSK Level", "-"),
-            "recommendation": row.get("Recommendation", "-"),
-
-            # ✅ skill
-            "tech": row.get("Matched JD Technical Skills", "").split(", ") if row.get("Matched JD Technical Skills") not in ["-", None] else [],
-            "language": row.get("Matched JD Language Skills", "").split(", ") if row.get("Matched JD Language Skills") not in ["-", None] else [],
-            "soft": row.get("Matched JD Soft Skills", "").split(", ") if row.get("Matched JD Soft Skills") not in ["-", None] else [],
-            "evidence": row.get("Soft Skill Evidence Sentences", "-"),
+            "Overall Score (%)": row.get("Overall Score (%)", "-"),
+            "Semantic Similarity (%)": row.get("Semantic Similarity (%)", "-"),
+            "Keyword Match (%)": row.get("Keyword Match (%)", "-"),
+            "Skill Coverage (%)": row.get("Skill Coverage (%)", "-"),
+            "HSK Level": row.get("HSK Level", "-"),
+            "Recommendation": row.get("Recommendation", "-"),
+            "Matched JD Technical Skills": row.get("Matched JD Technical Skills", "-"),
+            "Matched JD Language Skills": row.get("Matched JD Language Skills", "-"),
+            "Matched JD Soft Skills": row.get("Matched JD Soft Skills", "-"),
+            "Soft Skill Evidence Sentences": row.get("Soft Skill Evidence Sentences", "-"),
         })
 
     return templates.TemplateResponse(
