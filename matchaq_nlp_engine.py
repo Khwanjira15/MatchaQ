@@ -2,24 +2,34 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 import fitz
+import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-WEIGHT_SEMANTIC = 0.55
-WEIGHT_KEYWORD = 0.30
-WEIGHT_COVERAGE = 0.15
+WEIGHT_SEMANTIC = 0.6
+WEIGHT_KEYWORD = 0.4
+
+W_TECH = 0.60
+W_LANG = 0.25
+W_SOFT = 0.15
+
+THRESHOLD_TH = 0.50
+THRESHOLD_EN = 0.54
+JD_SEM_ACTIVATION = 0.35
+PF_SEM_ACTIVATION = 0.40
+SOFT_MATCH_SEM_THRESHOLD = 45.0
 
 NON_WORD_PATTERN = re.compile(r"[^\w\s]+", re.UNICODE)
 SPACE_PATTERN = re.compile(r"\s+")
 LATIN_OR_DIGIT_PATTERN = re.compile(r"[A-Za-z0-9]")
-THAI_PATTERN = re.compile(r"[ก-๙]")
+THAI_CHAR_PATTERN = re.compile(r"[ก-๙]")
 CJK_PATTERN = re.compile(r"[\u4e00-\u9fff]")
 HSK_PATTERN = re.compile(r"hsk\s*(?:level\s*)?([1-6])", re.IGNORECASE)
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?\n])\s+")
+SENTENCE_SPLIT_PATTERN = re.compile(r"[\n.!?;]+")
 
 SKILL_ALIASES = {
     "python": ["python", "py", "ไพธอน", "ภาษาไพธอน"],
@@ -321,6 +331,22 @@ SKILL_INTENTS = {
     ],
 }
 
+SOFT_INTENTS = {skill: SKILL_INTENTS[skill] for skill in [
+    "communication",
+    "problem solving",
+    "teamwork",
+    "leadership",
+    "time management",
+    "proactiveness",
+    "creativity",
+    "adaptability",
+    "critical thinking",
+    "responsibility",
+    "attention to detail",
+    "presentation",
+    "negotiation",
+]}
+
 SOFT_SKILLS = {
     "communication",
     "problem solving",
@@ -419,13 +445,28 @@ def normalize_text(text: str) -> str:
     return SPACE_PATTERN.sub(" ", text).strip()
 
 
+def compact_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9ก-๙]+", "", text.lower())
+
+
 def split_sentences(text: str) -> List[str]:
-    sentences = [part.strip() for part in SENTENCE_SPLIT_PATTERN.split(text) if part.strip()]
+    sentences = [part.strip() for part in SENTENCE_SPLIT_PATTERN.split(text) if len(part.strip().split()) >= 4]
     return sentences if sentences else [text.strip()]
 
 
 def _needs_substring_match(term: str) -> bool:
-    return bool(THAI_PATTERN.search(term) or CJK_PATTERN.search(term))
+    return bool(THAI_CHAR_PATTERN.search(term) or CJK_PATTERN.search(term))
+
+
+def thai_ratio(text: str) -> float:
+    if not text:
+        return 0.0
+    return len(THAI_CHAR_PATTERN.findall(text)) / max(1, len(text))
+
+
+def adaptive_threshold(text: str, th_th: float = THRESHOLD_TH, th_en: float = THRESHOLD_EN) -> float:
+    ratio = thai_ratio(text)
+    return (ratio * th_th) + ((1 - ratio) * th_en)
 
 
 def _contains_term(normalized_text: str, token_set: set[str], term: str) -> bool:
@@ -475,6 +516,33 @@ def extract_skill_map(text: str) -> Dict[str, SkillMatch]:
             skill_map[skill] = match
 
     return skill_map
+
+
+def extract_keywords_from_text(text: str) -> List[str]:
+    norm = normalize_text(text)
+    comp = compact_text(text)
+    no_space = norm.replace(" ", "")
+    found = []
+
+    for skill, aliases in SKILL_ALIASES.items():
+        hit = False
+        for alias in aliases:
+            a_norm = normalize_text(alias)
+            a_comp = compact_text(alias)
+
+            if a_norm and re.search(rf"(?<!\w){re.escape(a_norm)}(?!\w)", norm):
+                hit = True
+                break
+            if len(a_comp) >= 4 and a_comp in comp:
+                hit = True
+                break
+            if len(a_comp) >= 4 and a_comp in no_space:
+                hit = True
+                break
+        if hit:
+            found.append(skill)
+
+    return sorted(set(found))
 
 
 def categorize_skills(skills: Iterable[str]) -> tuple[List[str], List[str], List[str]]:
@@ -534,6 +602,22 @@ def get_model():
         return None
 
 
+@lru_cache(maxsize=1)
+def get_intent_embeddings() -> Dict[str, np.ndarray]:
+    model = get_model()
+    if model is None:
+        return {}
+    return {skill: np.array(model.encode(intents, normalize_embeddings=True)) for skill, intents in SKILL_INTENTS.items()}
+
+
+@lru_cache(maxsize=1)
+def get_soft_intent_embeddings() -> Dict[str, np.ndarray]:
+    model = get_model()
+    if model is None:
+        return {}
+    return {skill: np.array(model.encode(intents, normalize_embeddings=True)) for skill, intents in SOFT_INTENTS.items()}
+
+
 def semantic_batch(jd_text: str, portfolio_texts: Sequence[str]) -> List[float]:
     model = get_model()
     if model is not None:
@@ -547,31 +631,148 @@ def semantic_batch(jd_text: str, portfolio_texts: Sequence[str]) -> List[float]:
     return [round(float(score * 100), 2) for score in similarities]
 
 
-def _weighted_overlap_score(
-    jd_skill_map: Dict[str, SkillMatch],
-    pf_skill_map: Dict[str, SkillMatch],
-) -> tuple[float, float, List[str]]:
-    if not jd_skill_map:
-        return 0.0, 0.0, []
+def semantic_skill_scores(text: str, th_th: float = THRESHOLD_TH, th_en: float = THRESHOLD_EN) -> Dict[str, float]:
+    sentences = split_sentences(text)
+    if not sentences:
+        return {}
 
-    total_weight = 0.0
-    matched_weight = 0.0
-    matched_skills: List[str] = []
+    model = get_model()
+    intent_embeddings = get_intent_embeddings()
+    if model is None or not intent_embeddings:
+        exact_skills = set(extract_keywords_from_text(text))
+        return {skill: 1.0 for skill in exact_skills}
 
-    for skill, jd_match in jd_skill_map.items():
-        weight = SKILL_WEIGHTS.get(skill, DEFAULT_SKILL_WEIGHT)
-        total_weight += weight * jd_match.score
-        pf_match = pf_skill_map.get(skill)
-        if not pf_match:
+    sentence_vectors = np.array(model.encode(sentences, normalize_embeddings=True))
+    threshold = adaptive_threshold(text, th_th, th_en)
+
+    scores = {}
+    for skill, proto_vectors in intent_embeddings.items():
+        similarity = float(cosine_similarity(sentence_vectors, proto_vectors).max())
+        scores[skill] = 0.0 if similarity < threshold else (similarity - threshold) / (1 - threshold)
+    return scores
+
+
+def score_soft_skills_with_evidence(text: str, top_k: int = 2) -> Tuple[Dict[str, float], Dict[str, List[str]]]:
+    sentences = split_sentences(text)
+    if not sentences:
+        return {}, {}
+
+    model = get_model()
+    soft_embeddings = get_soft_intent_embeddings()
+    if model is None or not soft_embeddings:
+        fallback_skills = [skill for skill in extract_keywords_from_text(text) if skill in SOFT_SKILLS]
+        evidence = extract_match_evidence(text, fallback_skills)
+        return {skill: 100.0 for skill in fallback_skills}, {skill: evidence for skill in fallback_skills}
+
+    sentence_vectors = np.array(model.encode(sentences, normalize_embeddings=True))
+    threshold = adaptive_threshold(text, th_th=THRESHOLD_TH, th_en=THRESHOLD_EN)
+
+    soft_scores: Dict[str, float] = {}
+    soft_evidence: Dict[str, List[str]] = {}
+
+    for skill, proto_vectors in soft_embeddings.items():
+        similarity_matrix = cosine_similarity(sentence_vectors, proto_vectors)
+        best_per_sentence = similarity_matrix.max(axis=1)
+        best = float(best_per_sentence.max())
+
+        if best < threshold:
+            soft_scores[skill] = 0.0
+            soft_evidence[skill] = []
             continue
-        matched_weight += weight * min(jd_match.score, pf_match.score)
-        matched_skills.append(skill)
 
-    if total_weight == 0:
-        return 0.0, 0.0, []
+        soft_scores[skill] = round(min(100.0, ((best - threshold) / (1 - threshold)) * 100), 2)
+        indices = np.argsort(best_per_sentence)[::-1][:top_k]
+        soft_evidence[skill] = [sentences[i] for i in indices if (best_per_sentence[i] * 100) >= SOFT_MATCH_SEM_THRESHOLD]
 
-    score = round((matched_weight / total_weight) * 100, 2)
-    return score, matched_weight, matched_skills
+    return soft_scores, soft_evidence
+
+
+def weighted_blended_group_score(
+    jd_group: set[str],
+    pf_exact_set: set[str],
+    pf_sem_scores: Dict[str, float],
+) -> Optional[float]:
+    if not jd_group:
+        return None
+
+    numerator = 0.0
+    denominator = 0.0
+    for skill in jd_group:
+        weight = SKILL_WEIGHTS.get(skill, DEFAULT_SKILL_WEIGHT)
+        denominator += weight
+        hit = max(1.0 if skill in pf_exact_set else 0.0, pf_sem_scores.get(skill, 0.0))
+        numerator += weight * hit
+
+    return (numerator / denominator) * 100 if denominator > 0 else 0.0
+
+
+def keyword_match_score_3groups(
+    jd_keywords: Sequence[str],
+    pf_keywords: Sequence[str],
+    pf_text: str,
+    jd_text: str,
+) -> Tuple[float, int, List[str], Dict[str, List[str]]]:
+    jd_exact = set(jd_keywords)
+    pf_exact = set(pf_keywords)
+
+    jd_sem = semantic_skill_scores(jd_text, th_th=0.49, th_en=0.53)
+    pf_sem = semantic_skill_scores(pf_text, th_th=PF_SEM_ACTIVATION, th_en=THRESHOLD_EN)
+
+    jd_all = jd_exact | {skill for skill, score in jd_sem.items() if score >= JD_SEM_ACTIVATION}
+    jd_tech = jd_all & TECH_SKILLS
+    jd_lang = jd_all & LANG_SKILLS
+    jd_soft = jd_all & SOFT_SKILLS
+
+    soft_scores, soft_evidence = score_soft_skills_with_evidence(pf_text)
+    for skill, score in soft_scores.items():
+        pf_sem[skill] = max(pf_sem.get(skill, 0.0), score / 100.0)
+
+    tech_score = weighted_blended_group_score(jd_tech, pf_exact, pf_sem)
+    lang_score = weighted_blended_group_score(jd_lang, pf_exact, pf_sem)
+    soft_score = weighted_blended_group_score(jd_soft, pf_exact, pf_sem)
+
+    hsk_level = detect_hsk(pf_text)
+    if lang_score is not None:
+        if hsk_level >= 5:
+            lang_score = min(100.0, lang_score + 8.0)
+        elif hsk_level == 4:
+            lang_score = min(100.0, lang_score + 6.0)
+        elif hsk_level >= 1:
+            lang_score = min(100.0, lang_score + 2.0)
+
+    scores = []
+    weights = []
+    if tech_score is not None:
+        scores.append(tech_score)
+        weights.append(W_TECH)
+    if lang_score is not None:
+        scores.append(lang_score)
+        weights.append(W_LANG)
+    if soft_score is not None:
+        scores.append(soft_score)
+        weights.append(W_SOFT)
+
+    if not scores:
+        return 0.0, hsk_level, [], soft_evidence
+
+    total_weight = sum(weights)
+    keyword_score = sum(score * (weight / total_weight) for score, weight in zip(scores, weights))
+
+    matched_skills = []
+    for skill in jd_all:
+        if skill in pf_exact or pf_sem.get(skill, 0.0) >= PF_SEM_ACTIVATION:
+            matched_skills.append(skill)
+
+    return round(keyword_score, 2), hsk_level, sorted(set(matched_skills)), soft_evidence
+
+
+def coverage_score_from_matches(jd_keywords: Sequence[str], matched_skills: Sequence[str], jd_text: str) -> float:
+    jd_exact = set(jd_keywords)
+    jd_sem = semantic_skill_scores(jd_text, th_th=0.49, th_en=0.53)
+    jd_all = jd_exact | {skill for skill, score in jd_sem.items() if score >= JD_SEM_ACTIVATION}
+    if not jd_all:
+        return 0.0
+    return round((len(set(matched_skills) & jd_all) / len(jd_all)) * 100, 2)
 
 
 def recommendation_label(score: float) -> str:
@@ -588,29 +789,40 @@ def evaluate_portfolios(
     jd_text = extract_text_from_pdf(jd_path)
     pf_texts = [extract_text_from_pdf(path) for path in portfolio_paths]
     semantic_scores = semantic_batch(jd_text, pf_texts)
-    jd_skill_map = extract_skill_map(jd_text)
-    _, _, jd_soft_skills = categorize_skills(jd_skill_map.keys())
+    jd_keywords = extract_keywords_from_text(jd_text)
 
     names = list(portfolio_names) if portfolio_names is not None else [Path(path).name for path in portfolio_paths]
     results: List[MatchResult] = []
 
     for path, display_name, pf_text, semantic_score in zip(portfolio_paths, names, pf_texts, semantic_scores):
-        pf_skill_map = extract_skill_map(pf_text)
-        keyword_score, _, matched_skills = _weighted_overlap_score(jd_skill_map, pf_skill_map)
-        coverage_score = round(
-            (len(matched_skills) / len(jd_skill_map) * 100) if jd_skill_map else 0.0,
-            2,
+        pf_keywords = extract_keywords_from_text(pf_text)
+        keyword_score, hsk_level, matched_skills, soft_evidence_map = keyword_match_score_3groups(
+            jd_keywords,
+            pf_keywords,
+            pf_text,
+            jd_text,
         )
+        coverage_score = coverage_score_from_matches(jd_keywords, matched_skills, jd_text)
         final_score = round(
-            (semantic_score * WEIGHT_SEMANTIC)
-            + (keyword_score * WEIGHT_KEYWORD)
-            + (coverage_score * WEIGHT_COVERAGE),
+            (semantic_score * WEIGHT_SEMANTIC) + (keyword_score * WEIGHT_KEYWORD),
             2,
         )
 
         matched_tech, matched_lang, matched_soft = categorize_skills(matched_skills)
-        evidence_skills = [skill for skill in matched_soft if skill in jd_soft_skills] or matched_skills
-        soft_evidence = extract_match_evidence(pf_text, evidence_skills)
+        evidence_skills = matched_soft or matched_skills
+        soft_evidence = []
+        for skill in matched_soft:
+            soft_evidence.extend(soft_evidence_map.get(skill, []))
+        if not soft_evidence:
+            soft_evidence = extract_match_evidence(pf_text, evidence_skills)
+        else:
+            unique_evidence = []
+            seen = set()
+            for sentence in soft_evidence:
+                if sentence not in seen:
+                    unique_evidence.append(sentence)
+                    seen.add(sentence)
+            soft_evidence = unique_evidence[:3]
 
         results.append(
             MatchResult(
@@ -619,7 +831,7 @@ def evaluate_portfolios(
                 keyword_score=round(keyword_score, 2),
                 final_score=final_score,
                 coverage_score=coverage_score,
-                hsk_level=detect_hsk(pf_text),
+                hsk_level=hsk_level,
                 matched_tech_skills=matched_tech,
                 matched_language_skills=matched_lang,
                 matched_soft_skills=matched_soft,
